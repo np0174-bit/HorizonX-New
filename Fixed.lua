@@ -1,19 +1,13 @@
 --[[
-    HorizonX Basketball v2.4
-    Delta Android - OrionLib UI
+    HorizonX Basketball v2.5
+    Delta Android Fixed
 ]]
 
--- =====================
--- SERVICES
--- =====================
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VIM               = game:GetService("VirtualInputManager")
 
--- =====================
--- CORE
--- =====================
 local player = Players.LocalPlayer
 
 local function getChar() return player.Character end
@@ -21,9 +15,46 @@ local function getHrp()  local c = getChar() return c and c:FindFirstChild("Huma
 local function getHum()  local c = getChar() return c and c:FindFirstChildOfClass("Humanoid") end
 
 -- =====================
--- ORIONLIB LOAD (lightweight, works on Delta Android)
+-- LOAD UI LIBRARY
+-- Try multiple sources until one works
 -- =====================
-local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
+local OrionLib = nil
+
+local LibSources = {
+    "https://raw.githubusercontent.com/shlexware/Orion/main/source",
+    "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
+}
+
+for _, url in ipairs(LibSources) do
+    if OrionLib then break end
+    pcall(function()
+        local result = loadstring(game:HttpGet(url))()
+        if result then OrionLib = result end
+    end)
+end
+
+-- If all sources fail, use a simple dummy UI
+if not OrionLib then
+    warn("[HorizonX] UI Library failed - using fallback")
+
+    local fakeTab = {}
+    fakeTab.AddSection  = function() end
+    fakeTab.AddToggle   = function(_, cfg) end
+    fakeTab.AddSlider   = function(_, cfg) end
+    fakeTab.AddButton   = function(_, cfg) end
+    fakeTab.AddLabel    = function() end
+    fakeTab.AddKeybind  = function(_, cfg) end
+    fakeTab.__index     = fakeTab
+
+    OrionLib = {}
+    OrionLib.MakeWindow = function(_, cfg)
+        local win = {}
+        win.MakeTab = function(_, cfg) return fakeTab end
+        return win
+    end
+    OrionLib.Init    = function() end
+    OrionLib.Destroy = function() end
+end
 
 -- =====================
 -- GAME DETECTION
@@ -43,9 +74,7 @@ local Shoot = nil
 local function loadRefs()
     pcall(function()
         local vGui = player.PlayerGui:FindFirstChild("Visual")
-        if vGui then
-            shootingElement = vGui:FindFirstChild("Shooting")
-        end
+        if vGui then shootingElement = vGui:FindFirstChild("Shooting") end
     end)
     pcall(function()
         Shoot = ReplicatedStorage.Packages.Knit.Services.ControlService.RE.Shoot
@@ -93,9 +122,7 @@ local Settings = {
 -- =====================
 local Connections = {}
 local function addConn(key, conn)
-    if Connections[key] then
-        pcall(function() Connections[key]:Disconnect() end)
-    end
+    if Connections[key] then pcall(function() Connections[key]:Disconnect() end) end
     Connections[key] = conn
 end
 local function removeConn(key)
@@ -114,7 +141,6 @@ local function getPlayerFromModel(model)
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr.Character == model then return plr end
     end
-    return nil
 end
 
 local function isEnemy(model)
@@ -127,7 +153,6 @@ end
 local function findBallCarrier()
     local myHrp = getHrp()
     if not myHrp then return nil, nil end
-
     if isPark then
         local best, bestDist = nil, math.huge
         for _, model in ipairs(workspace:GetChildren()) do
@@ -141,7 +166,6 @@ local function findBallCarrier()
         end
         return best, best and best.HumanoidRootPart
     end
-
     local looseBall = workspace:FindFirstChild("Basketball")
     if looseBall and looseBall:IsA("BasePart") then
         local best, bestDist = nil, math.huge
@@ -153,7 +177,6 @@ local function findBallCarrier()
         end
         if best then return best, best.HumanoidRootPart end
     end
-
     for _, model in ipairs(workspace:GetChildren()) do
         if model:IsA("Model") and model ~= getChar() and model:FindFirstChild("HumanoidRootPart") and isEnemy(model) then
             local ball = model:FindFirstChild("Basketball")
@@ -203,7 +226,6 @@ end
 -- =====================
 -- FEATURES
 -- =====================
-
 local function startAutoShoot()
     if not shootingElement then loadRefs() end
     if not shootingElement then return end
@@ -215,34 +237,25 @@ local function startAutoShoot()
         end
     end))
 end
-
 local function stopAutoShoot() removeConn("autoShoot") end
 
 local lastPositions = {}
 local function autoGuardTick()
     if not State.autoGuard or playerHasBall() then return end
-    local hrp = getHrp()
-    local hum = getHum()
+    local hrp = getHrp(); local hum = getHum()
     if not hrp or not hum then return end
     local carrier, carrierRoot = findBallCarrier()
     if not carrier or not carrierRoot then
-        pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game) end)
-        return
+        pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game) end); return
     end
     local dist = (hrp.Position - carrierRoot.Position).Magnitude
     local curPos = carrierRoot.Position
     local vel = Vector3.zero
-    if lastPositions[carrier] then
-        vel = (curPos - lastPositions[carrier]) / 0.033
-    end
+    if lastPositions[carrier] then vel = (curPos - lastPositions[carrier]) / 0.033 end
     lastPositions[carrier] = curPos
     local predicted = curPos + vel * Settings.predictionTime
     local dir = (predicted - hrp.Position).Unit
-    local defPos = Vector3.new(
-        (predicted - dir * 5).X,
-        hrp.Position.Y,
-        (predicted - dir * 5).Z
-    )
+    local defPos = Vector3.new((predicted - dir * 5).X, hrp.Position.Y, (predicted - dir * 5).Z)
     if dist <= Settings.guardDistance then
         hum:MoveTo(defPos)
         pcall(function() VIM:SendKeyEvent(dist <= 10, Enum.KeyCode.F, false, game) end)
@@ -257,24 +270,19 @@ local function postAimbotTick()
     local now = tick()
     if now - lastPostUpdate < 0.033 then return end
     lastPostUpdate = now
-    local hrp = getHrp()
-    if not hrp then return end
-    local target = getClosestEnemy(Settings.postDistance)
-    if not target then return end
+    local hrp = getHrp(); if not hrp then return end
+    local target = getClosestEnemy(Settings.postDistance); if not target then return end
     local dir = (target.Position - hrp.Position).Unit
     local face = CFrame.new(hrp.Position, hrp.Position + dir)
     if playerHasBall() then
         local hand = detectBallHand()
         hrp.CFrame = face * CFrame.Angles(0, math.rad(hand == "left" and 90 or -90), 0)
-    else
-        hrp.CFrame = face
-    end
+    else hrp.CFrame = face end
 end
 
 local function reboundTick()
     if not State.rebound then return end
-    local hrp = getHrp()
-    if not hrp then return end
+    local hrp = getHrp(); if not hrp then return end
     local best, bestDist = nil, isPark and 100 or math.huge
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name == "Basketball" then
@@ -285,17 +293,13 @@ local function reboundTick()
             end
         end
     end
-    if best then
-        hrp.CFrame = CFrame.new(best.Position + best.CFrame.LookVector * Settings.offsetDistance)
-    end
+    if best then hrp.CFrame = CFrame.new(best.Position + best.CFrame.LookVector * Settings.offsetDistance) end
 end
 
 local function followTick()
     if not State.follow then return end
-    local hrp = getHrp()
-    if not hrp then return end
-    local _, carrierRoot = findBallCarrier()
-    if not carrierRoot then return end
+    local hrp = getHrp(); if not hrp then return end
+    local _, carrierRoot = findBallCarrier(); if not carrierRoot then return end
     local maxD = isPark and 100 or math.huge
     if (hrp.Position - carrierRoot.Position).Magnitude <= maxD then
         hrp.CFrame = carrierRoot.CFrame * CFrame.new(0, 0, Settings.followOffset)
@@ -304,8 +308,7 @@ end
 
 local function magnetTick()
     if not State.magnet then return end
-    local hrp = getHrp()
-    if not hrp then return end
+    local hrp = getHrp(); if not hrp then return end
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name == "Basketball" then
             local part = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
@@ -316,28 +319,20 @@ local function magnetTick()
     end
 end
 
-local REACH_LIMBS = {
-    "Right Arm", "RightHand", "RightLowerArm",
-    "Left Arm", "LeftHand", "LeftLowerArm",
-}
+local REACH_LIMBS = {"Right Arm","RightHand","RightLowerArm","Left Arm","LeftHand","LeftLowerArm"}
 local function applyReach()
-    local c = getChar()
-    if not c then return end
+    local c = getChar(); if not c then return end
     for _, name in ipairs(REACH_LIMBS) do
         local part = c:FindFirstChild(name)
         if part then
             if State.stealReach then
                 if not OriginalSizes[name] then OriginalSizes[name] = part.Size end
                 part.Size = OriginalSizes[name] * Settings.stealMultiplier
-                part.Transparency = 1
-                part.CanCollide = false
-                part.Massless = true
+                part.Transparency = 1; part.CanCollide = false; part.Massless = true
             else
                 if OriginalSizes[name] then
                     part.Size = OriginalSizes[name]
-                    part.Transparency = 0
-                    part.CanCollide = true
-                    part.Massless = false
+                    part.Transparency = 0; part.CanCollide = true; part.Massless = false
                 end
             end
         end
@@ -345,8 +340,7 @@ local function applyReach()
 end
 
 local function applyStats()
-    local hum = getHum()
-    if not hum then return end
+    local hum = getHum(); if not hum then return end
     hum.WalkSpeed = State.speedBoost and Settings.walkSpeed or 16
     hum.JumpPower = State.jumpBoost and Settings.jumpPower or 50
 end
@@ -359,15 +353,12 @@ local function refreshESP()
                 if not existing then
                     local h = Instance.new("Highlight")
                     h.Name = "HX_ESP"
-                    h.FillColor = isEnemy(plr.Character) and Color3.fromRGB(220, 50, 50) or Color3.fromRGB(50, 200, 100)
-                    h.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    h.FillColor = isEnemy(plr.Character) and Color3.fromRGB(220,50,50) or Color3.fromRGB(50,200,100)
+                    h.OutlineColor = Color3.fromRGB(255,255,255)
                     h.FillTransparency = Settings.espFillTrans
-                    h.Adornee = plr.Character
-                    h.Parent = plr.Character
+                    h.Adornee = plr.Character; h.Parent = plr.Character
                 end
-            else
-                if existing then existing:Destroy() end
-            end
+            else if existing then existing:Destroy() end end
         end
     end
     for _, child in ipairs(workspace:GetChildren()) do
@@ -377,23 +368,19 @@ local function refreshESP()
                 if not existing then
                     local h = Instance.new("Highlight")
                     h.Name = "HX_BallESP"
-                    h.FillColor = Color3.fromRGB(255, 165, 0)
-                    h.OutlineColor = Color3.fromRGB(255, 220, 0)
+                    h.FillColor = Color3.fromRGB(255,165,0)
+                    h.OutlineColor = Color3.fromRGB(255,220,0)
                     h.FillTransparency = 0.2
-                    h.Adornee = child
-                    h.Parent = child
+                    h.Adornee = child; h.Parent = child
                 end
-            else
-                if existing then existing:Destroy() end
-            end
+            else if existing then existing:Destroy() end end
         end
     end
 end
 
 local function noClipTick()
     if not State.noClip then return end
-    local c = getChar()
-    if not c then return end
+    local c = getChar(); if not c then return end
     for _, p in ipairs(c:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = false end
     end
@@ -414,39 +401,25 @@ end
 -- MASTER HEARTBEAT
 -- =====================
 addConn("master", RunService.Heartbeat:Connect(function()
-    pcall(autoGuardTick)
-    pcall(postAimbotTick)
-    pcall(reboundTick)
-    pcall(followTick)
-    pcall(magnetTick)
-    pcall(noClipTick)
-    pcall(applyStats)
+    pcall(autoGuardTick); pcall(postAimbotTick); pcall(reboundTick)
+    pcall(followTick); pcall(magnetTick); pcall(noClipTick); pcall(applyStats)
 end))
 
-addConn("espRefresh", RunService.Stepped:Connect(function()
-    pcall(refreshESP)
-end))
+addConn("espRefresh", RunService.Stepped:Connect(function() pcall(refreshESP) end))
 
 player.CharacterAdded:Connect(function(c)
-    OriginalSizes = {}
-    lastPositions = {}
-    c:WaitForChild("HumanoidRootPart")
-    c:WaitForChild("Humanoid")
+    OriginalSizes = {}; lastPositions = {}
+    c:WaitForChild("HumanoidRootPart"); c:WaitForChild("Humanoid")
     task.wait(1)
-    pcall(loadRefs)
-    pcall(applyReach)
-    pcall(applyStats)
+    pcall(loadRefs); pcall(applyReach); pcall(applyStats)
 end)
 
 local function unloadAll()
     for k, conn in pairs(Connections) do
-        pcall(function() conn:Disconnect() end)
-        Connections[k] = nil
+        pcall(function() conn:Disconnect() end); Connections[k] = nil
     end
     State.stealReach = false; pcall(applyReach)
-    State.speedBoost = false
-    State.jumpBoost = false
-    pcall(applyStats)
+    State.speedBoost = false; State.jumpBoost = false; pcall(applyStats)
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr.Character then
             local e = plr.Character:FindFirstChild("HX_ESP")
@@ -461,20 +434,17 @@ local function unloadAll()
 end
 
 -- =====================
--- ORION WINDOW
+-- WINDOW
 -- =====================
 local Window = OrionLib:MakeWindow({
-    Name            = "HorizonX Basketball",
-    HidePremium     = false,
-    SaveConfig      = true,
-    ConfigFolder    = "HorizonX",
-    IntroEnabled    = true,
-    IntroText       = "HorizonX Basketball",
+    Name         = "HorizonX Basketball",
+    HidePremium  = false,
+    SaveConfig   = true,
+    ConfigFolder = "HorizonX",
+    IntroEnabled = true,
+    IntroText    = "HorizonX Basketball",
 })
 
--- =====================
--- TABS
--- =====================
 local MainTab    = Window:MakeTab({ Name = "Main",    Icon = "rbxassetid://4483345998", PremiumOnly = false })
 local DefenseTab = Window:MakeTab({ Name = "Defense", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 local OffenseTab = Window:MakeTab({ Name = "Offense", Icon = "rbxassetid://4483345998", PremiumOnly = false })
@@ -482,174 +452,63 @@ local PlayerTab  = Window:MakeTab({ Name = "Player",  Icon = "rbxassetid://44833
 local VisualsTab = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 local MiscTab    = Window:MakeTab({ Name = "Misc",    Icon = "rbxassetid://4483345998", PremiumOnly = false })
 
--- =====================
--- MAIN TAB
--- =====================
+-- MAIN
 MainTab:AddSection({ Name = "Auto Shooting" })
-
-MainTab:AddToggle({
-    Name    = "Auto Time Shot",
-    Default = false,
-    Save    = true,
-    Flag    = "AutoShoot",
-    Callback = function(v)
-        State.autoShoot = v
-        if v then startAutoShoot() else stopAutoShoot() end
-    end,
-})
-
-MainTab:AddSlider({
-    Name    = "Shot Timing",
-    Min     = 50,
-    Max     = 100,
-    Default = 80,
-    Color   = Color3.fromRGB(255, 165, 0),
-    Increment = 1,
-    ValueName = "%",
-    Callback = function(v) Settings.shootPower = v / 100 end,
-})
-
-MainTab:AddLabel("50-79 = Early/Late | 80 = OK | 90 = Good | 95 = Great | 100 = Perfect")
+MainTab:AddToggle({ Name = "Auto Time Shot", Default = false, Save = true, Flag = "AutoShoot",
+    Callback = function(v) State.autoShoot = v; if v then startAutoShoot() else stopAutoShoot() end end })
+MainTab:AddSlider({ Name = "Shot Timing", Min = 50, Max = 100, Default = 80,
+    Color = Color3.fromRGB(255,165,0), Increment = 1, ValueName = "%",
+    Callback = function(v) Settings.shootPower = v / 100 end })
+MainTab:AddLabel("50-79 = Early | 80 = OK | 90 = Good | 95 = Great | 100 = Perfect")
 
 MainTab:AddSection({ Name = "Auto Rebound and Steal" })
-
-MainTab:AddToggle({
-    Name    = "Auto Rebound and Steal",
-    Default = false,
-    Save    = true,
-    Flag    = "Rebound",
-    Callback = function(v) State.rebound = v end,
-})
-
-MainTab:AddSlider({
-    Name      = "Teleport Offset",
-    Min       = 0,
-    Max       = 6,
-    Default   = 0,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 1,
-    ValueName = " studs",
-    Callback  = function(v) Settings.offsetDistance = v end,
-})
+MainTab:AddToggle({ Name = "Auto Rebound and Steal", Default = false, Save = true, Flag = "Rebound",
+    Callback = function(v) State.rebound = v end })
+MainTab:AddSlider({ Name = "Teleport Offset", Min = 0, Max = 6, Default = 0,
+    Color = Color3.fromRGB(255,165,0), Increment = 1, ValueName = " studs",
+    Callback = function(v) Settings.offsetDistance = v end })
 
 MainTab:AddSection({ Name = "Steal Reach" })
-
-MainTab:AddToggle({
-    Name    = "Expanded Steal Hitbox",
-    Default = false,
-    Save    = true,
-    Flag    = "StealReach",
-    Callback = function(v)
-        State.stealReach = v
-        pcall(applyReach)
-    end,
-})
-
-MainTab:AddSlider({
-    Name      = "Reach Multiplier",
-    Min       = 100,
-    Max       = 400,
-    Default   = 150,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 10,
-    ValueName = "%",
-    Callback  = function(v)
-        Settings.stealMultiplier = v / 100
-        if State.stealReach then pcall(applyReach) end
-    end,
-})
+MainTab:AddToggle({ Name = "Expanded Steal Hitbox", Default = false, Save = true, Flag = "StealReach",
+    Callback = function(v) State.stealReach = v; pcall(applyReach) end })
+MainTab:AddSlider({ Name = "Reach Multiplier", Min = 100, Max = 400, Default = 150,
+    Color = Color3.fromRGB(255,165,0), Increment = 10, ValueName = "%",
+    Callback = function(v) Settings.stealMultiplier = v / 100; if State.stealReach then pcall(applyReach) end end })
 
 MainTab:AddSection({ Name = "Ball Magnet" })
+MainTab:AddToggle({ Name = "Ball Magnet", Default = false, Save = true, Flag = "Magnet",
+    Callback = function(v) State.magnet = v end })
+MainTab:AddSlider({ Name = "Magnet Radius", Min = 5, Max = 150, Default = 30,
+    Color = Color3.fromRGB(255,165,0), Increment = 5, ValueName = " studs",
+    Callback = function(v) Settings.magnetDistance = v end })
 
-MainTab:AddToggle({
-    Name    = "Ball Magnet",
-    Default = false,
-    Save    = true,
-    Flag    = "Magnet",
-    Callback = function(v) State.magnet = v end,
-})
-
-MainTab:AddSlider({
-    Name      = "Magnet Radius",
-    Min       = 5,
-    Max       = 150,
-    Default   = 30,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 5,
-    ValueName = " studs",
-    Callback  = function(v) Settings.magnetDistance = v end,
-})
-
--- =====================
--- DEFENSE TAB
--- =====================
+-- DEFENSE
 DefenseTab:AddSection({ Name = "Auto Guard" })
-
-DefenseTab:AddToggle({
-    Name    = "Auto Guard",
-    Default = false,
-    Save    = true,
-    Flag    = "AutoGuard",
+DefenseTab:AddToggle({ Name = "Auto Guard", Default = false, Save = true, Flag = "AutoGuard",
     Callback = function(v)
         State.autoGuard = v
-        if not v then
-            lastPositions = {}
-            pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game) end)
-        end
-    end,
-})
-
-DefenseTab:AddSlider({
-    Name      = "Guard Distance",
-    Min       = 3,
-    Max       = 40,
-    Default   = 10,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 1,
-    ValueName = " studs",
-    Callback  = function(v) Settings.guardDistance = v end,
-})
-
-DefenseTab:AddSlider({
-    Name      = "Movement Prediction",
-    Min       = 0,
-    Max       = 10,
-    Default   = 3,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 1,
-    ValueName = "x",
-    Callback  = function(v) Settings.predictionTime = v / 10 end,
-})
+        if not v then lastPositions = {}; pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game) end) end
+    end })
+DefenseTab:AddSlider({ Name = "Guard Distance", Min = 3, Max = 40, Default = 10,
+    Color = Color3.fromRGB(255,165,0), Increment = 1, ValueName = " studs",
+    Callback = function(v) Settings.guardDistance = v end })
+DefenseTab:AddSlider({ Name = "Movement Prediction", Min = 0, Max = 10, Default = 3,
+    Color = Color3.fromRGB(255,165,0), Increment = 1, ValueName = "x",
+    Callback = function(v) Settings.predictionTime = v / 10 end })
 
 DefenseTab:AddSection({ Name = "Follow Ball Carrier" })
+DefenseTab:AddToggle({ Name = "Follow Ball Carrier", Default = false, Save = true, Flag = "Follow",
+    Callback = function(v) State.follow = v end })
+DefenseTab:AddSlider({ Name = "Follow Offset", Min = -15, Max = 15, Default = -10,
+    Color = Color3.fromRGB(255,165,0), Increment = 1, ValueName = " studs",
+    Callback = function(v) Settings.followOffset = v end })
 
-DefenseTab:AddToggle({
-    Name    = "Follow Ball Carrier",
-    Default = false,
-    Save    = true,
-    Flag    = "Follow",
-    Callback = function(v) State.follow = v end,
-})
-
-DefenseTab:AddSlider({
-    Name      = "Follow Offset",
-    Min       = -15,
-    Max       = 15,
-    Default   = -10,
-    Color     = Color3.fromRGB(255, 165, 0),
-    Increment = 1,
-    ValueName = " studs",
-    Callback  = function(v) Settings.followOffset = v end,
-})
-
--- =====================
--- OFFENSE TAB
--- =====================
+-- OFFENSE
 OffenseTab:AddSection({ Name = "Post Aimbot" })
-
-OffenseTab:AddToggle({
-    Name    = "Post Aimbot",
-    Default = false,
-    Save    = true,
-    Flag    = "PostAimbot",
-    Callback =
+OffenseTab:AddToggle({ Name = "Post Aimbot", Default = false, Save = true, Flag = "PostAimbot",
+    Callback = function(v) State.postAimbot = v; if not v then State.postHoldActive = false end end })
+OffenseTab:AddToggle({ Name = "Hold to Activate Post Aimbot", Default = false, Save = false, Flag = "PostHold",
+    Callback = function(v) if not State.postAimbot then return end; State.postHoldActive = v end })
+OffenseTab:AddSlider({ Name = "Detection Distance", Min = 3, Max = 30, Default = 10,
+    Color = C
+        
