@@ -1,8 +1,4 @@
---[[
-    HorizonX Hub - Blox Fruits
-    Auto Farm Script
-    Delta Android Compatible
-]]
+
 
 repeat task.wait() until game:IsLoaded()
 
